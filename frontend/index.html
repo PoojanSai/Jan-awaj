@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Janawaj – Voice Grievance Portal</title>
+
+<style>
+:root{
+  --bg:#000;
+  --glass: rgba(255,255,255,0.05);
+  --border: rgba(255,255,255,0.2);
+  --text:#fff;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui;}
+html,body{
+  width:100%;height:100%;
+  background:linear-gradient(135deg,#000,#111);
+  display:flex;justify-content:center;align-items:center;
+}
+#app{
+  width:90%;height:90%;
+  background:var(--glass);
+  backdrop-filter:blur(15px);
+  border:1px solid var(--border);
+  border-radius:25px;
+  display:flex;
+  flex-direction:column;
+}
+header{
+  padding:20px;
+  text-align:center;
+  font-size:26px;
+  color:var(--text);
+  border-bottom:1px solid var(--border);
+}
+#messages{
+  flex:1;
+  padding:20px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.msg{
+  padding:12px 16px;
+  border-radius:15px;
+  max-width:75%;
+  border:1px solid var(--border);
+  color:var(--text);
+}
+.user{align-self:flex-end;background:rgba(255,255,255,0.1);}
+.bot{align-self:flex-start;background:rgba(255,255,255,0.05);}
+#controls{
+  padding:15px;
+  border-top:1px solid var(--border);
+  display:flex;
+  gap:8px;
+}
+#controls textarea{
+  flex:1;
+  resize:none;
+  border:none;
+  border-radius:12px;
+  padding:10px;
+  background:rgba(255,255,255,0.05);
+  color:white;
+}
+#controls button{
+  border:none;
+  border-radius:12px;
+  padding:10px 14px;
+  background:rgba(255,255,255,0.1);
+  color:white;
+  cursor:pointer;
+}
+#fileInput{display:none;}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+  <header>Janwaj – Citizen Grievance</header>
+
+  <div id="messages">
+    <div class="msg bot">
+      📝 Type, 🎤 speak, or 📎 upload an audio complaint. Location is used automatically.
+    </div>
+  </div>
+
+  <div id="controls">
+    <textarea id="textInput" rows="2" placeholder="Type your complaint..."></textarea>
+    <button onclick="submitText()">📝</button>
+    <button onclick="startVoice()">🎤</button>
+    <button onclick="document.getElementById('fileInput').click()">📎</button>
+    <input type="file" id="fileInput" accept="audio/*" onchange="handleFile(event)">
+  </div>
+</div>
+
+<script>
+const messages = document.getElementById("messages");
+const textInput = document.getElementById("textInput");
+
+function addMessage(text, cls){
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.innerText = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+// 🔹 Submit text complaint
+function submitText(){
+  const text = textInput.value.trim();
+  if(!text){
+    addMessage("❌ Please enter a complaint.", "bot");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const fd = new FormData();
+    fd.append("text", text);
+    fd.append("lat", pos.coords.latitude);
+    fd.append("lon", pos.coords.longitude);
+
+    addMessage(text, "user");
+    addMessage("📨 Submitting complaint...", "bot");
+
+    fetch("http://127.0.0.1:8000/complaint", {
+      method:"POST",
+      body: fd
+    })
+    .then(r=>r.json())
+    .then(()=>{
+      addMessage("✅ Complaint submitted successfully.", "bot");
+      textInput.value="";
+    })
+    .catch(()=>{
+      addMessage("❌ Submission failed.", "bot");
+    });
+  });
+}
+
+// 🎤 Voice recording
+let recorder, chunks=[];
+
+async function startVoice(){
+  addMessage("🎤 Listening... Speak for 5 seconds.", "bot");
+  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  recorder = new MediaRecorder(stream);
+  chunks = [];
+
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = sendVoice;
+
+  recorder.start();
+  setTimeout(()=>recorder.stop(),5000);
+}
+
+function sendVoice(){
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const blob = new Blob(chunks,{type:"audio/webm"});
+    sendAudio(blob,pos.coords.latitude,pos.coords.longitude);
+  });
+}
+
+// 📎 Audio upload
+function handleFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+
+  addMessage("📎 Uploaded: "+file.name,"user");
+
+  navigator.geolocation.getCurrentPosition(pos=>{
+    sendAudio(file,pos.coords.latitude,pos.coords.longitude);
+  });
+}
+
+// 🚀 Send audio to backend
+function sendAudio(audio,lat,lon){
+  const fd = new FormData();
+  fd.append("audio",audio);
+  fd.append("lat",lat);
+  fd.append("lon",lon);
+
+  addMessage("📨 Submitting complaint...", "bot");
+
+  fetch("http://127.0.0.1:8000/complaint",{
+    method:"POST",
+    body:fd
+  })
+  .then(r=>r.json())
+  .then(()=>{
+    addMessage("✅ Complaint submitted successfully.", "bot");
+  })
+  .catch(()=>{
+    addMessage("❌ Submission failed.", "bot");
+  });
+}
+</script>
+
+</body>
+</html>
